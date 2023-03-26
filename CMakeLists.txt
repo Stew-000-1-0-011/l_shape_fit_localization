@@ -20,7 +20,7 @@ find_package(geometry_msgs REQUIRED)
 # ament_export_dependencies(rosidl_default_runtime)
 
 include_directories(include
-  "/home/stew/stew_programming/Library"
+  "/home/stew/stew_programming/Library"  #自分の環境でblazeやCRSLibtmp, BLAS系ライブラリを入れたディレクトリのパスに変更すること
 )
 
 add_library(localization SHARED
