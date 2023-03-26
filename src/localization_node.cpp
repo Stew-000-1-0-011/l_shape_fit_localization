@@ -23,6 +23,8 @@ namespace localization_node
 		rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr odom_sub;
 		rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub;
 
+		std::optional<const Pose2D> l_shape{};
+
 		LatestPose2D urg_pose{std::forward_as_tuple(), std::forward_as_tuple(rclcpp::Time{0, 0})};
 		LatestPose2D urg_velocity{std::forward_as_tuple(Pose2D::zero()), std::forward_as_tuple(rclcpp::Time{0, 0})};
 
@@ -34,16 +36,16 @@ namespace localization_node
 				double x = 0, y = 0, theta = 0;
 				if
 				(
-					this->get_parameter<double>("initial_global_pose.x", x) &&
-					this->get_parameter<double>("initial_global_pose.y", y) &&
-					this->get_parameter<double>("initial_global_pose.theta", theta)
+					this->get_parameter<double>("initial_global_urg_pose.x", x) &&
+					this->get_parameter<double>("initial_global_urg_pose.y", y) &&
+					this->get_parameter<double>("initial_global_urg_pose.theta", theta)
 				)
 				{
 					urg_pose.update(LatestPose2D::Stamped{Pose2D{Vec2D{x, y}, theta}, rclcpp::Time{0, 0}});
 				}
 				else
 				{
-					RCLCPP_ERROR(this->get_logger(), "Cannot read initial_global_pose.");
+					RCLCPP_ERROR(this->get_logger(), "Cannot read initial_global_urg_pose.");
 				}
 			}
 
@@ -58,7 +60,6 @@ namespace localization_node
 			urg_velocity.update(LatestPose2D::Stamped{Pose2D{{from_odom_urg_velocity->twist.linear.x, from_odom_urg_velocity->twist.linear.y}, from_odom_urg_velocity->twist.angular.z}, from_odom_urg_velocity->header.stamp});
 		}
 
-		// 同時に同じ関数を呼ばせてはならない。他の関数とは並列実行可能。
 		void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr scan_data)
 		{
 			const Pose2D urg_velocity = this->urg_velocity.get().value;
@@ -69,12 +70,12 @@ namespace localization_node
 
 			{
 				double angle = scan_data->angle_min;
-				double time = 0;
+				double time = -scan_data->scan_time;
 				for(const auto& range : scan_data->ranges)
 				{
 					if(scan_data->range_min <= range && range <= scan_data->range_max)
 					{
-						const auto urg_at_this_time = urg_pose.point + urg_velocity.point * time;
+						const auto urg_at_this_time = urg_velocity.point * time;
 						const auto from_urg = range * Vec2D{blaze::cos(angle), blaze::sin(angle)};
 						data_points.emplace_back(urg_at_this_time + from_urg);
 					}
@@ -84,20 +85,26 @@ namespace localization_node
 				}
 			}
 
-			if(const auto new_urg_pose = calc_l_shape(data_points, urg_pose, 0.1); new_urg_pose)
+			LatestPose2D::Stamped new_urg_pose{};
+			if(const auto new_l_shape_from_urg = calc_l_shape(data_points, *l_shape - urg_pose, 0.1); new_l_shape_from_urg)
 			{
-				this->urg_pose.update(LatestPose2D::Stamped{*new_urg_pose, scan_data->header.stamp});
-
-				geometry_msgs::msg::Pose2D message{};
-				message.x = new_urg_pose->point[0];
-				message.y = new_urg_pose->point[1];
-				message.theta = new_urg_pose->theta;
+				new_urg_pose = {*new_l_shape_from_urg - *l_shape, scan_data->header.stamp};
 				
-				pose_pub->publish(message);
 			}
 			else
 			{
-				this->urg_pose.update(LatestPose2D::Stamped{urg_pose + urg_velocity * scan_data->scan_time, scan_data->header.stamp});
+				RCLCPP_WARN(this->get_logger(), "fail to calc_l_shape.");
+				new_urg_pose = {urg_pose + urg_velocity * scan_data->scan_time, scan_data->header.stamp};
+			}
+
+			if(this->urg_pose.update(new_urg_pose))
+			{
+				geometry_msgs::msg::Pose2D message{};
+				message.x = new_urg_pose.value.point[0];
+				message.y = new_urg_pose.value.point[1];
+				message.theta = new_urg_pose.value.theta;
+
+				pose_pub->publish(message);
 			}
 		}
 	};
