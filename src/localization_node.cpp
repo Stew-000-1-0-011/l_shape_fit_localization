@@ -32,22 +32,8 @@ namespace localization_node
 		LocalizationNode(const rclcpp::NodeOptions& options):
 			rclcpp::Node("l_shape_fit_localization", options)
 		{
-			{
-				double x = 0, y = 0, theta = 0;
-				if
-				(
-					this->get_parameter<double>("initial_global_urg_pose.x", x) &&
-					this->get_parameter<double>("initial_global_urg_pose.y", y) &&
-					this->get_parameter<double>("initial_global_urg_pose.theta", theta)
-				)
-				{
-					urg_pose.update(LatestPose2D::Stamped{Pose2D{Vec2D{x, y}, theta}, rclcpp::Time{0, 0}});
-				}
-				else
-				{
-					RCLCPP_ERROR(this->get_logger(), "Cannot read initial_global_urg_pose.");
-				}
-			}
+			urg_pose.update(LatestPose2D::Stamped{read_pose("initial_global_urg_pose"), rclcpp::Time{0, 0}});
+			l_shape.emplace(read_pose("initial_global_l_shape_pose"));
 
 			pose_pub = this->create_publisher<geometry_msgs::msg::Pose2D>("pose", 1);
 			odom_sub = this->create_subscription<geometry_msgs::msg::TwistStamped>("odom", 1, std::bind(&LocalizationNode::odom_callback, this, std::placeholders::_1));
@@ -89,7 +75,6 @@ namespace localization_node
 			if(const auto new_l_shape_from_urg = calc_l_shape(data_points, *l_shape - urg_pose, 0.1); new_l_shape_from_urg)
 			{
 				new_urg_pose.emplace(*new_l_shape_from_urg - *l_shape, scan_data->header.stamp);
-				
 			}
 			else
 			{
@@ -106,6 +91,22 @@ namespace localization_node
 
 				pose_pub->publish(message);
 			}
+		}
+
+		Pose2D read_pose(const std::string& parameter_name)
+		{
+			double x = 0, y = 0, theta = 0;
+			if
+			(
+				!this->get_parameter<double>(parameter_name + ".x", x) ||
+				!this->get_parameter<double>(parameter_name + ".y", y) ||
+				!this->get_parameter<double>(parameter_name + ".theta", theta)
+			)
+			{
+				RCLCPP_ERROR_STREAM(this->get_logger(), "Cannot read " << parameter_name << ".");
+			}
+
+			return Pose2D{Vec2D{x, y}, theta};
 		}
 	};
 }
