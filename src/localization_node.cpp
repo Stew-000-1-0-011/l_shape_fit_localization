@@ -85,24 +85,24 @@ namespace localization_node
 				}
 			}
 
-			LatestPose2D::Stamped new_urg_pose{};
+			std::optional<LatestPose2D::Stamped> new_urg_pose{};
 			if(const auto new_l_shape_from_urg = calc_l_shape(data_points, *l_shape - urg_pose, 0.1); new_l_shape_from_urg)
 			{
-				new_urg_pose = {*new_l_shape_from_urg - *l_shape, scan_data->header.stamp};
+				new_urg_pose.emplace(*new_l_shape_from_urg - *l_shape, scan_data->header.stamp);
 				
 			}
 			else
 			{
 				RCLCPP_WARN(this->get_logger(), "fail to calc_l_shape.");
-				new_urg_pose = {urg_pose + urg_velocity * scan_data->scan_time, scan_data->header.stamp};
+				new_urg_pose.emplace(urg_pose + urg_velocity * scan_data->scan_time, scan_data->header.stamp);
 			}
 
-			if(this->urg_pose.update(new_urg_pose))
+			if(this->urg_pose.update(*new_urg_pose))
 			{
 				geometry_msgs::msg::Pose2D message{};
-				message.x = new_urg_pose.value.point[0];
-				message.y = new_urg_pose.value.point[1];
-				message.theta = new_urg_pose.value.theta;
+				message.x = new_urg_pose->value.point[0];
+				message.y = new_urg_pose->value.point[1];
+				message.theta = new_urg_pose->value.theta;
 
 				pose_pub->publish(message);
 			}

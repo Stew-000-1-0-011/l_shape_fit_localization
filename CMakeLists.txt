@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(l_shape_fit_localization)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -std=c++20)
+  add_compile_options(-Wall -Wextra -Wpedantic -pedantic-errors -std=c++20)
 endif()
 
 # find dependencies
