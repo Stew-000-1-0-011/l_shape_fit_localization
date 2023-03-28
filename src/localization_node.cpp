@@ -17,14 +17,29 @@ namespace localization_node
 	using CRSLib::LightweightPointCloud::LShapeFit::Vec2D;
 	using LatestPose2D = CRSLib::MutexedLatest<Pose2D, rclcpp::Time>;
 
+	/**
+	 * @brief 
+	 * URGセンサのグローバル座標を出力するノード。
+	 * 精度の保証、処理にかかる時間の保証は一切ない。
+	 * call_backの並列実行は可能。
+	 * いかなる場合も未定義の動作が起きないことを保証(しているつもり)
+	 */
 	class LocalizationNode final : public rclcpp::Node
 	{
 		rclcpp::Publisher<geometry_msgs::msg::Pose2D>::SharedPtr pose_pub;
 		rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr odom_sub;
 		rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub;
 
+		/**
+		 * @brief 
+		 * グローバル座標における検出するL字の位置。時不変とした。
+		 */
 		std::optional<const Pose2D> l_shape{};
 
+		/**
+		 * @brief 
+		 * LaserScanの最後のデータが計測された時点における、グローバル座標上でのURGセンサの位置姿勢、そしてその時間変化。
+		 */
 		LatestPose2D urg_pose{std::forward_as_tuple(), std::forward_as_tuple(rclcpp::Time{0, 0})};
 		LatestPose2D urg_velocity{std::forward_as_tuple(Pose2D::zero()), std::forward_as_tuple(rclcpp::Time{0, 0})};
 
@@ -48,17 +63,19 @@ namespace localization_node
 
 		void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr scan_data)
 		{
-			const Pose2D urg_velocity = this->urg_velocity.get().value;
-			const Pose2D urg_pose = this->urg_pose.get().value;
-
 			std::vector<Vec2D> data_points{};
 			data_points.reserve(scan_data->ranges.size());
+
+			// その時点で最新の値を取得。
+			const Pose2D urg_velocity = this->urg_velocity.get().value;
+			const Pose2D urg_pose = this->urg_pose.get().value;
 
 			{
 				double angle = scan_data->angle_min;
 				double time = -scan_data->scan_time;
 				for(const auto& range : scan_data->ranges)
 				{
+					// [range_min, range_max]に含まれるデータを、このLaserScanの取得完了時の機体中心の座標系における点に変換。
 					if(scan_data->range_min <= range && range <= scan_data->range_max)
 					{
 						const auto urg_at_this_time = urg_velocity.point * time;
@@ -71,6 +88,9 @@ namespace localization_node
 				}
 			}
 
+			// 機体座標系におけるL字の位置姿勢が計算ができたなら、その結果からURGの位置姿勢を更新しようとする。
+			// さもなくば、オドメトリ情報から位置姿勢を更新しようとする。
+			// 更新成功時にはpublishする。
 			std::optional<LatestPose2D::Stamped> new_urg_pose{};
 			if(const auto new_l_shape_from_urg = calc_l_shape(data_points, *l_shape - urg_pose, 0.1); new_l_shape_from_urg)
 			{
@@ -93,6 +113,7 @@ namespace localization_node
 			}
 		}
 
+		// パラメータ読み取り用関数。
 		Pose2D read_pose(const std::string& parameter_name)
 		{
 			double x = 0, y = 0, theta = 0;
