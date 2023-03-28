@@ -92,7 +92,7 @@ namespace localization_node
 			// さもなくば、オドメトリ情報から位置姿勢を更新しようとする。
 			// 更新成功時にはpublishする。
 			std::optional<LatestPose2D::Stamped> new_urg_pose{};
-			if(const auto new_l_shape_from_urg = calc_l_shape(data_points, *l_shape - urg_pose, 0.1); new_l_shape_from_urg)
+			if(const auto new_l_shape_from_urg = calc_l_shape(data_points, *l_shape - urg_pose); new_l_shape_from_urg)
 			{
 				new_urg_pose.emplace(*new_l_shape_from_urg - *l_shape, scan_data->header.stamp);
 			}
