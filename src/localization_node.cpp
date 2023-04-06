@@ -13,8 +13,8 @@
 namespace localization_node
 {
 	using CRSLib::LightweightPointCloud::LShapeFit::calc_l_shape;
-	using CRSLib::LightweightPointCloud::LShapeFit::Pose2D;
-	using CRSLib::LightweightPointCloud::LShapeFit::Vec2D;
+	using CRSLib::Math::Pose2D;
+	using CRSLib::Math::Vec2D;
 	using LatestPose2D = CRSLib::MutexedLatest<Pose2D, rclcpp::Time>;
 
 	/**
