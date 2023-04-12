@@ -116,12 +116,12 @@ namespace localization_node
 		// パラメータ読み取り用関数。
 		Pose2D read_pose(const std::string& parameter_name)
 		{
-			double x = 0, y = 0, theta = 0;
+			double x, y, theta;
 			if
 			(
-				!this->get_parameter<double>(parameter_name + ".x", x) ||
-				!this->get_parameter<double>(parameter_name + ".y", y) ||
-				!this->get_parameter<double>(parameter_name + ".theta", theta)
+				!this->get_parameter_or<double>(parameter_name + ".x", x, 0.0) ||
+				!this->get_parameter_or<double>(parameter_name + ".y", y, 0.0) ||
+				!this->get_parameter_or<double>(parameter_name + ".theta", theta, 0.0)
 			)
 			{
 				RCLCPP_ERROR_STREAM(this->get_logger(), "Cannot read " << parameter_name << ".");
