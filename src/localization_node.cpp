@@ -12,10 +12,25 @@
 
 namespace localization_node
 {
+	struct Stamp
+	{
+		decltype(geometry_msgs::msg::TwistStamped{}.header.stamp) stamp{};
+
+		constexpr friend bool operator<(const Stamp& l, const Stamp& r) noexcept
+		{
+			return l.stamp.sec != r.stamp.sec ? l.stamp.sec < r.stamp.sec : l.stamp.nanosec < r.stamp.nanosec;
+		}
+
+		friend bool operator==(const Stamp& l, const Stamp& r) noexcept
+		{
+			return l.stamp == r.stamp;
+		}
+	};
+
 	using CRSLib::LightweightPointCloud::LShapeFit::calc_l_shape;
 	using CRSLib::Math::Pose2D;
 	using CRSLib::Math::Vec2D;
-	using LatestPose2D = CRSLib::MutexedLatest<Pose2D, rclcpp::Time>;
+	using LatestPose2D = CRSLib::MutexedLatest<Pose2D, Stamp>;
 
 	/**
 	 * @brief 
@@ -40,14 +55,14 @@ namespace localization_node
 		 * @brief 
 		 * LaserScanの最後のデータが計測された時点における、グローバル座標上でのURGセンサの位置姿勢、そしてその時間変化。
 		 */
-		LatestPose2D urg_pose{std::forward_as_tuple(), std::forward_as_tuple(rclcpp::Time{0, 0})};
-		LatestPose2D urg_velocity{std::forward_as_tuple(Pose2D::zero()), std::forward_as_tuple(rclcpp::Time{0, 0})};
+		LatestPose2D urg_pose{std::forward_as_tuple(), std::forward_as_tuple(Stamp{})};
+		LatestPose2D urg_velocity{std::forward_as_tuple(Pose2D::zero()), std::forward_as_tuple(Stamp{})};
 
 	public:
 		LocalizationNode(const rclcpp::NodeOptions& options):
 			rclcpp::Node("l_shape_fit_localization", options)
 		{
-			urg_pose.update(LatestPose2D::Stamped{read_pose("initial_global_urg_pose"), rclcpp::Time{0, 0}});
+			urg_pose.update(LatestPose2D::Stamped{read_pose("initial_global_urg_pose"), Stamp{}});
 			l_shape.emplace(read_pose("initial_global_l_shape_pose"));
 
 			pose_pub = this->create_publisher<geometry_msgs::msg::Pose2D>("pose", 1);
@@ -58,7 +73,7 @@ namespace localization_node
 	private:
 		void odom_callback(const geometry_msgs::msg::TwistStamped::SharedPtr from_odom_urg_velocity)
 		{
-			urg_velocity.update(LatestPose2D::Stamped{Pose2D{{from_odom_urg_velocity->twist.linear.x, from_odom_urg_velocity->twist.linear.y}, from_odom_urg_velocity->twist.angular.z}, from_odom_urg_velocity->header.stamp});
+			urg_velocity.update(LatestPose2D::Stamped{Pose2D{{from_odom_urg_velocity->twist.linear.x, from_odom_urg_velocity->twist.linear.y}, from_odom_urg_velocity->twist.angular.z}, Stamp{from_odom_urg_velocity->header.stamp}});
 		}
 
 		void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr scan_data)
@@ -91,15 +106,16 @@ namespace localization_node
 			// 機体座標系におけるL字の位置姿勢が計算ができたなら、その結果からURGの位置姿勢を更新しようとする。
 			// さもなくば、オドメトリ情報から位置姿勢を更新しようとする。
 			// 更新成功時にはpublishする。
+
 			std::optional<LatestPose2D::Stamped> new_urg_pose{};
 			if(const auto new_l_shape_from_urg = calc_l_shape(data_points, *l_shape - urg_pose); new_l_shape_from_urg)
 			{
-				new_urg_pose.emplace(*new_l_shape_from_urg - *l_shape, scan_data->header.stamp);
+				new_urg_pose.emplace(*new_l_shape_from_urg - *l_shape, Stamp{scan_data->header.stamp});
 			}
 			else
 			{
 				RCLCPP_WARN(this->get_logger(), "fail to calc_l_shape.");
-				new_urg_pose.emplace(urg_pose + urg_velocity * scan_data->scan_time, scan_data->header.stamp);
+				new_urg_pose.emplace(urg_pose + urg_velocity * scan_data->scan_time, Stamp{scan_data->header.stamp});
 			}
 
 			if(this->urg_pose.update(*new_urg_pose))
